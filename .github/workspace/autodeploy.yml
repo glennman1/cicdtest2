@@ -1,0 +1,59 @@
+name: EC2자동배포
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  Auto-Deploy-Job:
+     runs-on: ubuntu-latest
+
+     steps:
+       - name: github repository 의 파일 가져오기
+         uses: action/checkout@v4
+
+       - name: JDK 17 설치하기
+         uses: actions/setup-java@v4
+         with:
+           distribution: temurin
+           java-version: 17
+
+       - name: application.yml 파일 생성
+         run: |
+           mkdir -p src/main/resources
+           echo "${{ secrets.APPLICATION_YAML }}" > ./src/main/resources/application.yml
+           
+       - name: jar 빌드하기
+         run: |
+          chmod +x ./gradlew
+          ./gradlew clean build
+
+       - name: 빌드된 jar변경
+         run: mv ./build/libs/*-SNAPSHOT.jar ./app.jar
+
+
+       - name: EC2 에 jar파일전송 (SCP사용)
+         uses: appleboy/scp-action@v0.1.7
+         with:
+           host: ${{ secrets.EC2_HOST }}
+           username: ${{ secrets.EC2_USERNAME }}
+           key: ${{ secrets.EC2_PRIVATE_KEY }}
+           source: app.jar
+           target: /home/ubuntu/project-server/tobe
+
+       - name: SSH로 EC2에 접속하기
+         uses: appleboy/ssh-action@v1.0.3
+         with:
+             host: ${{ secrets.EC2_HOST }}
+             username: ${{ secrets.EC2_USERNAME }}
+             key: ${{ secrets.EC2_PRIVATE_KEY }}
+             script_stop: true
+             script: |
+               rm -rf /home/ubuntu/project-server/cur
+               mkdir /home/ubuntu/project-server/cur
+               mv /home/ubuntu/project-server/tobe/app.jar /home/ubuntu/project-server/cur/app.jar
+               cd /home/ubuntu/project-server/cur
+               sudo fuser -k -n tcp 8080 || true
+               sudo nohup java -jar app.jar > ./output.log 2>&1 &
+               rm -rf /home/ubuntu/project-server/tobe
