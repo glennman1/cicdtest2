@@ -3,7 +3,7 @@ name: EC2자동배포
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   Auto-Deploy-Job:
